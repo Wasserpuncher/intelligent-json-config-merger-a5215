@@ -1,0 +1,49 @@
+# GitHub Actions Workflow zur kontinuierlichen Integration für Python-Anwendungen
+name: Python CI/CD
+
+# Definiert, wann dieser Workflow ausgeführt werden soll
+on:
+  # Bei jedem Push auf einen Branch
+  push:
+    branches: [ "main", "develop" ]
+  # Bei jedem Pull Request zu einem Branch
+  pull_request:
+    branches: [ "main", "develop" ]
+
+# Definiert die Jobs, die im Workflow ausgeführt werden sollen
+jobs:
+  build:
+    # Der Job läuft auf dem neuesten Ubuntu-Runner
+    runs-on: ubuntu-latest
+
+    # Definiert eine Strategie, um den Job mit verschiedenen Python-Versionen auszuführen
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+
+    # Schritte, die für jeden Job ausgeführt werden
+    steps:
+    - uses: actions/checkout@v3
+      # Holt den Code aus dem Repository
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+      # Installiert die spezifische Python-Version
+    - name: Install dependencies
+      run: |
+        # Aktualisiert pip und installiert die im requirements.txt definierten Abhängigkeiten
+        python -m pip install --upgrade pip
+        pip install flake8 pytest
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Lint with flake8
+      run: |
+        # Stoppt den Build, wenn Dateien nicht den flake8-Standards entsprechen
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Zeigt Warnungen und Fehler an, aber erlaubt das Fortfahren (wenn --exit-zero verwendet wird)
+        # Hier: Stoppt bei Fehlern (Standardverhalten)
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+    - name: Test with pytest
+      run: |
+        # Führt pytest aus, um alle Tests im Projekt zu finden und auszuführen
+        pytest
