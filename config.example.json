@@ -1,0 +1,8 @@
+{
+  "inputs": [
+    "base_config.json",
+    "overlay_config.json"
+  ],
+  "strategy": "deep_merge",
+  "output": "merged_config.json"
+}

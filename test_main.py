@@ -1,7 +1,15 @@
 import unittest
 import json
 import os
-from main import JsonConfigMerger
+import tempfile
+import shutil
+from main import (
+    JsonConfigMerger,
+    MergeRunConfig,
+    load_run_config,
+    run_from_config,
+    main,
+)
 
 class TestJsonConfigMerger(unittest.TestCase):
     """
@@ -171,6 +179,104 @@ class TestJsonConfigMerger(unittest.TestCase):
         # Erwartet, dass ein ValueError ausgelöst wird, wenn eine ungültige Strategie übergeben wird
         with self.assertRaises(ValueError):
             JsonConfigMerger(merge_strategy="invalid_strategy")
+
+class TestConfigFileSupport(unittest.TestCase):
+    """
+    Tests für den config.json-gesteuerten Merge-Lauf (Issue #1).
+    """
+
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_json(self, name: str, data: object) -> str:
+        path = os.path.join(self.tmpdir, name)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        return path
+
+    def test_from_dict_valid(self) -> None:
+        cfg = MergeRunConfig.from_dict(
+            {"inputs": ["a.json", "b.json"], "strategy": "overwrite", "output": "out.json"}
+        )
+        self.assertEqual(cfg.inputs, ["a.json", "b.json"])
+        self.assertEqual(cfg.strategy, "overwrite")
+        self.assertEqual(cfg.output, "out.json")
+
+    def test_from_dict_defaults(self) -> None:
+        cfg = MergeRunConfig.from_dict({"inputs": ["a.json"]})
+        self.assertEqual(cfg.strategy, "deep_merge")
+        self.assertIsNone(cfg.output)
+
+    def test_from_dict_missing_inputs(self) -> None:
+        with self.assertRaises(ValueError):
+            MergeRunConfig.from_dict({"strategy": "deep_merge"})
+
+    def test_from_dict_invalid_strategy(self) -> None:
+        with self.assertRaises(ValueError):
+            MergeRunConfig.from_dict({"inputs": ["a.json"], "strategy": "nope"})
+
+    def test_load_run_config_missing_file(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            load_run_config(os.path.join(self.tmpdir, "missing.json"))
+
+    def test_run_from_config_deep_merge_writes_output(self) -> None:
+        self._write_json("base.json", {"settings": {"debug": True, "port": 80}, "list": [1, 2]})
+        self._write_json("overlay.json", {"settings": {"port": 443, "timeout": 30}, "list": [3]})
+        output_path = os.path.join(self.tmpdir, "merged.json")
+        config_path = self._write_json(
+            "config.json",
+            {
+                "inputs": [
+                    os.path.join(self.tmpdir, "base.json"),
+                    os.path.join(self.tmpdir, "overlay.json"),
+                ],
+                "strategy": "deep_merge",
+                "output": output_path,
+            },
+        )
+        result = run_from_config(config_path)
+        expected = {"settings": {"debug": True, "port": 443, "timeout": 30}, "list": [3]}
+        self.assertEqual(result, expected)
+        with open(output_path, "r", encoding="utf-8") as f:
+            self.assertEqual(json.load(f), expected)
+
+    def test_run_from_config_overwrite_strategy(self) -> None:
+        # Bei 'overwrite' wird ein verschachteltes Dict komplett ersetzt (kein rekursiver Merge).
+        self._write_json("base.json", {"a": 1, "b": {"x": 10}})
+        self._write_json("overlay.json", {"b": {"y": 20}, "c": 3})
+        config_path = self._write_json(
+            "config.json",
+            {
+                "inputs": [
+                    os.path.join(self.tmpdir, "base.json"),
+                    os.path.join(self.tmpdir, "overlay.json"),
+                ],
+                "strategy": "overwrite",
+            },
+        )
+        result = run_from_config(config_path)
+        self.assertEqual(result, {"a": 1, "b": {"y": 20}, "c": 3})
+
+    def test_main_cli_success(self) -> None:
+        self._write_json("base.json", {"x": 1})
+        self._write_json("over.json", {"y": 2})
+        config_path = self._write_json(
+            "config.json",
+            {
+                "inputs": [
+                    os.path.join(self.tmpdir, "base.json"),
+                    os.path.join(self.tmpdir, "over.json"),
+                ]
+            },
+        )
+        self.assertEqual(main(["--config", config_path]), 0)
+
+    def test_main_cli_missing_config(self) -> None:
+        self.assertEqual(main(["--config", os.path.join(self.tmpdir, "nope.json")]), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

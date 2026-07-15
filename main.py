@@ -1,5 +1,7 @@
+import argparse
 import json
-from typing import Dict, Any, Union, List
+import sys
+from typing import Dict, Any, List, Optional
 import os
 
 class JsonConfigMerger:
@@ -143,7 +145,128 @@ class JsonConfigMerger:
         merged.update(overlay)
         return merged
 
-if __name__ == "__main__":
+
+# Standardname der Merge-Steuerungsdatei, falls kein Pfad angegeben wird.
+DEFAULT_CONFIG_FILENAME = "config.json"
+
+
+class MergeRunConfig:
+    """
+    Repräsentiert einen kompletten, aus einer JSON-Steuerungsdatei geladenen Merge-Lauf.
+
+    Die Steuerungsdatei (`config.json`) beschreibt, welche Eingabedateien gemergt
+    werden, welche Strategie dabei verwendet wird und wohin das Ergebnis geschrieben
+    wird -- ohne dass dafür Code angepasst werden muss.
+    """
+
+    def __init__(
+        self,
+        inputs: List[str],
+        strategy: str = "deep_merge",
+        output: Optional[str] = None,
+    ) -> None:
+        """
+        Args:
+            inputs: Geordnete Liste der zu mergenden JSON-Eingabedateien.
+            strategy: Merge-Strategie ('deep_merge' oder 'overwrite').
+            output: Optionaler Pfad, in den das Ergebnis geschrieben wird.
+        """
+        self.inputs = inputs
+        self.strategy = strategy
+        self.output = output
+
+    @staticmethod
+    def from_dict(data: Dict[str, Any]) -> "MergeRunConfig":
+        """
+        Erzeugt eine MergeRunConfig aus einem geparsten JSON-Objekt und validiert die Felder.
+
+        Raises:
+            ValueError: Wenn Pflichtfelder fehlen oder Werte ungültig sind.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("Die Steuerungsdatei muss ein JSON-Objekt sein.")
+
+        raw_inputs = data.get("inputs")
+        if not isinstance(raw_inputs, list) or not raw_inputs:
+            raise ValueError("Die Steuerungsdatei benötigt ein nicht-leeres 'inputs'-Array.")
+        inputs: List[str] = []
+        for item in raw_inputs:
+            if not isinstance(item, str):
+                raise ValueError("Jeder Eintrag in 'inputs' muss ein Dateipfad (String) sein.")
+            inputs.append(item)
+
+        strategy = data.get("strategy", "deep_merge")
+        if not isinstance(strategy, str):
+            raise ValueError("'strategy' muss ein String sein.")
+        if strategy not in ("deep_merge", "overwrite"):
+            raise ValueError("'strategy' muss 'deep_merge' oder 'overwrite' sein.")
+
+        output = data.get("output")
+        if output is not None and not isinstance(output, str):
+            raise ValueError("'output' muss ein Dateipfad (String) oder null sein.")
+
+        return MergeRunConfig(inputs=inputs, strategy=strategy, output=output)
+
+
+def load_run_config(config_path: str = DEFAULT_CONFIG_FILENAME) -> MergeRunConfig:
+    """
+    Lädt und validiert eine Merge-Steuerungsdatei von der Festplatte.
+
+    Raises:
+        FileNotFoundError: Wenn die Steuerungsdatei fehlt.
+        json.JSONDecodeError: Wenn die Steuerungsdatei kein gültiges JSON ist.
+        ValueError: Wenn der Inhalt kein gültiges Merge-Schema beschreibt.
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Steuerungsdatei nicht gefunden: {config_path}")
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return MergeRunConfig.from_dict(data)
+
+
+def run_from_config(config_path: str = DEFAULT_CONFIG_FILENAME) -> Dict[str, Any]:
+    """
+    Führt einen kompletten Merge anhand einer Steuerungsdatei aus.
+
+    Lädt der Reihe nach alle Eingabedateien, mergt sie mit der konfigurierten
+    Strategie und schreibt das Ergebnis -- falls angegeben -- in die Ausgabedatei.
+    Gibt die zusammengeführte Konfiguration zurück.
+    """
+    run_config = load_run_config(config_path)
+    merger = JsonConfigMerger(merge_strategy=run_config.strategy)
+    result: Dict[str, Any] = {}
+    for input_path in run_config.inputs:
+        overlay = merger.load_json(input_path)
+        result = merger.merge_configs(result, overlay)
+    if run_config.output is not None:
+        merger.save_json(result, run_config.output)
+    return result
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """
+    Kommandozeilen-Einstiegspunkt: steuert einen Merge über eine JSON-Steuerungsdatei.
+    """
+    parser = argparse.ArgumentParser(
+        description="Merge JSON configuration files driven by a JSON control file.",
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default=DEFAULT_CONFIG_FILENAME,
+        help=f"Path to the merge control file (default: {DEFAULT_CONFIG_FILENAME}).",
+    )
+    args = parser.parse_args(argv)
+    try:
+        result = run_from_config(args.config)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=4, ensure_ascii=False))
+    return 0
+
+
+def _run_demo() -> None:
     # Beispielnutzung des JsonConfigMergers
 
     # Erstelle temporäre JSON-Dateien für das Beispiel
@@ -225,3 +348,7 @@ if __name__ == "__main__":
     os.remove(merged_deep_file)
     os.remove(merged_overwrite_file)
     print("Temporäre Dateien aufgeräumt.")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

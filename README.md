@@ -208,6 +208,39 @@ Result for `merged_overwrite_config.json` (from example above):
 }
 ```
 
+## 2.1 Configuration-file driven merges
+
+Rather than wiring the merge up in code, a whole run can be described in a single
+JSON control file (`config.json`). It names the input files to merge, the merge
+strategy, and where to write the result:
+
+```json
+{
+  "inputs": ["base_config.json", "overlay_config.json"],
+  "strategy": "deep_merge",
+  "output": "merged_config.json"
+}
+```
+
+*   `inputs` (required): ordered list of JSON files to merge, earlier first.
+*   `strategy` (optional): `deep_merge` (default) or `overwrite`.
+*   `output` (optional): path the merged result is written to; if omitted the
+    result is printed to stdout.
+
+Run it from the command line (see `config.example.json` for a template):
+
+```bash
+python main.py --config config.json
+```
+
+Or programmatically:
+
+```python
+from main import run_from_config
+
+merged = run_from_config("config.json")
+```
+
 ## 3. Architecture
 
 For a deep dive into the design principles, core components, and extensibility of the `JsonConfigMerger`, please refer to the [Architecture Documentation](docs/architecture_en.md).
