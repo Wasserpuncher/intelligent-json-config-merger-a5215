@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Build Status](https://github.com/your-username/intelligent-json-config-merger/actions/workflows/python-app.yml/badge.svg)
+![Build Status](https://github.com/Wasserpuncher/intelligent-json-config-merger-a5215/actions/workflows/python-app.yml/badge.svg)
 
 An enterprise-ready, open-source Python library for intelligently merging JSON configuration files. This tool is designed to simplify application configuration management by providing robust strategies for combining multiple JSON sources, ensuring a flexible and hierarchical approach to settings.
 
@@ -30,7 +30,7 @@ An enterprise-ready, open-source Python library for intelligently merging JSON c
 To get started, clone the repository and install the required dependencies:
 
 ```bash
-git clone https://github.com/your-username/intelligent-json-config-merger.git
+git clone https://github.com/Wasserpuncher/intelligent-json-config-merger-a5215.git
 cd intelligent-json-config-merger
 python -m venv venv
 source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
